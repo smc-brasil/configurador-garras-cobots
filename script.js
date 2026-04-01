@@ -16,6 +16,7 @@ const grippers = [
   { model: "ZGS 300x180", type: "vacuo", size: "300x180", ejectors: [1, 2, 3], compatible_shapes: ["flat", "rectangular"] },
   { model: "ZGS 400x240", type: "vacuo", size: "400x240", ejectors: [2, 4, 6], compatible_shapes: ["flat", "rectangular"] },
   { model: "ZXPE5", type: "vacuo_eletrico", cups: [1, 2, 4], maxWorkLoad: 5, maxVacuum: -74, flowRate: 4.5, compatible_shapes: ["flat", "rectangular"] },
+  { model: "ZXP7", type: "vacuo_zxp7", cups: [1, 2, 4], maxWorkLoad: 7, maxVacuum: -84, flowRate: 17, compatible_shapes: ["flat", "rectangular"] },
 ];
 
 const ZGS_CATALOG = {
@@ -41,6 +42,8 @@ const TIPOS_GARRA = {
   MAGNETICA: "magnetica",
   VACUO: "vacuo",
   VACUO_ELETRICO: "vacuo_eletrico",
+  VACUO_ZXP7: "vacuo_zxp7",
+  VACUO_MODULAR: "vacuo_modular",
 };
 
 
@@ -50,6 +53,8 @@ const defaultsByType = {
   eletrica: { workpieceShape: "rectangular", gripperCount: 1, friction: 0.2, offset: 10, mountingType: "standard", configuredForce: 100 },
   vacuo: { workpieceShape: "flat", gripperCount: 1, pressure: 0.5, suctionArea: 1.0, ejectors: 2, movement: "horizontal" },
   vacuo_eletrico: { workpieceShape: "flat", gripperCount: 1, pressure: 0.5, cups: 2, cupDiameter: 20, movement: "horizontal" },
+  vacuo_zxp7: { workpieceShape: "flat", gripperCount: 1, pressure: 0.5, cups: 2, cupDiameter: 20 },
+  vacuo_modular: { workpieceShape: "flat", cups: 2, cupDiameter: 20, pressure: 0.5 },
 };
 
 const ELECTRIC_FORCE_CURVES = [60, 100, 140];
@@ -77,6 +82,7 @@ const magnetCountFieldEl = document.getElementById("magnetCountField");
 const magnetCountEl = document.getElementById("magnetCount");
 const pressureFieldEl = document.getElementById("pressureField");
 const vacuumPressureFieldEl = document.getElementById("vacuumPressureField");
+const vacuumPressureFixedFieldEl = document.getElementById("vacuumPressureFixedField");
 const vacuumNoteEl = document.getElementById("vacuumNote");
 const workpieceShapeEl = document.getElementById("workpieceShape");
 const rectangularDimensionsEl = document.getElementById("rectangularDimensions");
@@ -146,6 +152,14 @@ function isVacuumElectricType(type = selectedType) {
   return type === TIPOS_GARRA.VACUO_ELETRICO;
 }
 
+function isVacuumZXP7Type(type = selectedType) {
+  return type === "vacuo_zxp7";
+}
+
+function isVacuumModularType(type = selectedType) {
+  return type === "vacuo_modular";
+}
+
 function isElectricVacuumType(type = selectedType) {
   return isVacuumElectricType(type);
 }
@@ -166,7 +180,22 @@ function isElectricVacuumGripper(gripper) {
   return gripper?.type === TIPOS_GARRA.VACUO_ELETRICO;
 }
 
+function isVacuumZXP7Gripper(gripper) {
+  return gripper?.type === TIPOS_GARRA.VACUO_ZXP7;
+}
+
+function isVacuumModularGripper(gripper) {
+  return gripper?.type === TIPOS_GARRA.VACUO_MODULAR;
+}
+
 function getInputs() {
+  const vacuumFeedPressure = Number(document.getElementById("vacuumPressure").value);
+  const vacuumFixedPressure = Number(document.getElementById("vacuumPressureFixed").value);
+  const pneumaticPressure = Number(document.getElementById("pressure").value);
+  const effectivePressure = (isVacuumElectricType() || isVacuumZXP7Type() || isVacuumModularType())
+    ? vacuumFeedPressure
+    : pneumaticPressure;
+
   return {
     type: selectedType,
     workpieceShape: workpieceShapeEl.value,
@@ -176,7 +205,8 @@ function getInputs() {
     mass: Number(document.getElementById("mass").value),
     friction: Number(document.getElementById("friction").value),
     safetyFactor: Number(document.getElementById("safetyFactor").value),
-    pressure: Number(document.getElementById("pressure").value),
+    pressure: effectivePressure,
+    vacuumFixedPressure,
     mode: document.getElementById("mode").value,
     offset: Number(document.getElementById("offset").value),
     parallelMode: parallelModeEl.value,
@@ -194,8 +224,25 @@ function getInputs() {
   };
 }
 
+function getVacuumFromPressure(pressure) {
+  const p1 = 0.3;
+  const v1 = 60000;
+  const p2 = 0.5;
+  const v2 = 84000;
+
+  if (pressure <= p1) return v1;
+  if (pressure >= p2) return v2;
+
+  return v1 + ((pressure - p1) * (v2 - v1)) / (p2 - p1);
+}
+
 function getAllowedShapes(type = selectedType) {
-  if (type === TIPOS_GARRA.VACUO || type === TIPOS_GARRA.VACUO_ELETRICO) {
+  if (
+    type === TIPOS_GARRA.VACUO ||
+    type === TIPOS_GARRA.VACUO_ELETRICO ||
+    type === TIPOS_GARRA.VACUO_ZXP7 ||
+    type === TIPOS_GARRA.VACUO_MODULAR
+  ) {
     return ["flat", "rectangular"];
   }
   if (isMagneticType(type)) return ["flat", "cylindrical"];
@@ -269,7 +316,12 @@ function syncGeometryFields() {
 }
 
 function syncComparisonHeader(type) {
-  if (type === TIPOS_GARRA.VACUO || type === TIPOS_GARRA.VACUO_ELETRICO) {
+  if (
+    type === TIPOS_GARRA.VACUO ||
+    type === TIPOS_GARRA.VACUO_ELETRICO ||
+    type === TIPOS_GARRA.VACUO_ZXP7 ||
+    type === TIPOS_GARRA.VACUO_MODULAR
+  ) {
     comparisonHeaderRowEl.innerHTML = "<th>Modelo</th><th>Força (N)</th><th>Necessária (N)</th><th>Margem</th><th>Status</th>";
     return;
   }
@@ -281,56 +333,59 @@ function syncGripperSpecificFields() {
   const isElectric = isElectricType();
   const isVacuum = isVacuumType();
   const isVacuumElectric = isVacuumElectricType();
+  const isVacuumZXP7 = isVacuumZXP7Type();
+  const isVacuumModular = isVacuumModularType();
 
   movementFieldEl.classList.toggle("is-hidden", !isVacuum);
   vacuumAreaFieldEl.classList.toggle("is-hidden", !isVacuum);
   ejectorFieldEl.classList.toggle("is-hidden", !isVacuum);
-  cupsFieldEl.classList.toggle("is-hidden", !isVacuumElectric);
-  cupDiameterFieldEl.classList.toggle("is-hidden", !isVacuumElectric);
+  cupsFieldEl.classList.toggle("is-hidden", !(isVacuumElectric || isVacuumZXP7 || isVacuumModular));
+  cupDiameterFieldEl.classList.toggle("is-hidden", !(isVacuumElectric || isVacuumZXP7 || isVacuumModular));
 
-  if (isVacuumElectric) {
+  if (isVacuumElectric || isVacuumZXP7 || isVacuumModular) {
     movementFieldEl.classList.add("is-hidden");
     vacuumAreaFieldEl.classList.add("is-hidden");
     ejectorFieldEl.classList.add("is-hidden");
   }
 
-  frictionFieldEl.classList.toggle("is-hidden", isMagnetic || isVacuum || isVacuumElectric);
-  modeFieldEl.classList.toggle("is-hidden", isMagnetic || isElectric || isVacuum || isVacuumElectric);
-  offsetFieldEl.classList.toggle("is-hidden", isMagnetic || isVacuum || isVacuumElectric);
-  parallelModeFieldEl.classList.toggle("is-hidden", isMagnetic || isElectric || isVacuum || isVacuumElectric);
+  frictionFieldEl.classList.toggle("is-hidden", isMagnetic || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
+  modeFieldEl.classList.toggle("is-hidden", isMagnetic || isElectric || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
+  offsetFieldEl.classList.toggle("is-hidden", isMagnetic || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
+  parallelModeFieldEl.classList.toggle("is-hidden", isMagnetic || isElectric || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
   thicknessFieldEl.classList.toggle("is-hidden", !isMagnetic);
   magnetCountFieldEl.classList.toggle("is-hidden", !isMagnetic);
   materialFieldEl.classList.toggle("is-hidden", !isMagnetic);
   magnetNoteEl.classList.toggle("is-hidden", !isMagnetic);
   materialWarningEl.classList.toggle("is-hidden", !isMagnetic);
-  pressureFieldEl.classList.toggle("is-hidden", isMagnetic || isElectric || isVacuumElectric);
-  vacuumPressureFieldEl.classList.toggle("is-hidden", !isVacuumElectric);
-  vacuumNoteEl.classList.toggle("is-hidden", !isVacuumElectric);
-  gripperCountFieldEl.classList.toggle("is-hidden", isMagnetic || isVacuum || isVacuumElectric);
+  pressureFieldEl.classList.toggle("is-hidden", isMagnetic || isElectric || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
+  vacuumPressureFixedFieldEl.classList.toggle("is-hidden", !isVacuumElectric);
+  vacuumPressureFieldEl.classList.toggle("is-hidden", !(isVacuumZXP7 || isVacuumModular));
+  vacuumNoteEl.classList.toggle("is-hidden", !(isVacuumElectric || isVacuumZXP7 || isVacuumModular));
+  gripperCountFieldEl.classList.toggle("is-hidden", isMagnetic || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
   mountingTypeFieldEl.classList.toggle("is-hidden", !isElectric);
   configuredForceFieldEl.classList.toggle("is-hidden", !isElectric);
   electricTechnicalNoteEl.classList.toggle("is-hidden", !isElectric);
   safetyFactorFieldEl.classList.toggle("is-hidden", false);
-  workpieceShapeEl.closest("label").classList.toggle("is-hidden", isVacuum || isVacuumElectric);
-  rectangularDimensionsEl.classList.toggle("is-hidden", (isVacuum || isVacuumElectric) || !(workpieceShapeEl.value === "rectangular" || workpieceShapeEl.value === "square"));
-  cylindricalDimensionsEl.classList.toggle("is-hidden", (isVacuum || isVacuumElectric) || workpieceShapeEl.value !== "cylindrical");
+  workpieceShapeEl.closest("label").classList.toggle("is-hidden", isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular);
+  rectangularDimensionsEl.classList.toggle("is-hidden", (isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular) || !(workpieceShapeEl.value === "rectangular" || workpieceShapeEl.value === "square"));
+  cylindricalDimensionsEl.classList.toggle("is-hidden", (isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular) || workpieceShapeEl.value !== "cylindrical");
 
-  document.getElementById("friction").disabled = isMagnetic || isVacuum || isVacuumElectric;
-  document.getElementById("mode").disabled = isMagnetic || isElectric || isVacuum || isVacuumElectric;
-  document.getElementById("offset").disabled = isMagnetic || isVacuum || isVacuumElectric;
-  parallelModeEl.disabled = isMagnetic || isElectric || isVacuum || isVacuumElectric;
+  document.getElementById("friction").disabled = isMagnetic || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular;
+  document.getElementById("mode").disabled = isMagnetic || isElectric || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular;
+  document.getElementById("offset").disabled = isMagnetic || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular;
+  parallelModeEl.disabled = isMagnetic || isElectric || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular;
   document.getElementById("thickness").disabled = !isMagnetic;
   magnetCountEl.disabled = !isMagnetic;
   document.getElementById("material").disabled = !isMagnetic;
   document.getElementById("pressure").disabled = isMagnetic || isElectric;
-  gripperCountEl.disabled = isMagnetic || isVacuum || isVacuumElectric;
+  gripperCountEl.disabled = isMagnetic || isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular;
   mountingTypeEl.disabled = !isElectric;
   configuredForceEl.disabled = !isElectric;
   movementEl.disabled = !isVacuum;
   ejectorsEl.disabled = !isVacuum;
   suctionAreaEl.disabled = !isVacuum;
-  cupsEl.disabled = !isVacuumElectric;
-  cupDiameterEl.disabled = !isVacuumElectric;
+  cupsEl.disabled = !(isVacuumElectric || isVacuumZXP7 || isVacuumModular);
+  cupDiameterEl.disabled = !(isVacuumElectric || isVacuumZXP7 || isVacuumModular);
   document.getElementById("safetyFactor").disabled = false;
   zgsSafetyNoteEl.classList.toggle("is-hidden", !isVacuum);
   zgsPressureNoteEl.classList.toggle("is-hidden", !isVacuum);
@@ -451,7 +506,7 @@ function generateZGSChartData(size, ejectors, suctionArea, safetyFactor) {
 function calculateRequiredForce(values) {
   const weight = values.mass * 9.81;
 
-  if (isVacuumType(values.type) || isElectricVacuumType(values.type)) {
+  if (isVacuumType(values.type) || isElectricVacuumType(values.type) || isVacuumZXP7Type(values.type) || isVacuumModularType(values.type)) {
     return weight * values.safetyFactor;
   }
 
@@ -503,7 +558,31 @@ function calculateForGripper(gripper, values) {
     };
   }
 
+  if (gripper.type === TIPOS_GARRA.VACUO_ZXP7) {
+    const area = Math.PI * Math.pow((values.cupDiameter / 1000) / 2, 2);
+    const vacuum = getVacuumFromPressure(values.pressure);
+    const availableForce = area * vacuum * values.cups;
+    const requiredForce = values.mass * 9.81 * values.safetyFactor;
+    const marginPercent = ((availableForce - requiredForce) / requiredForce) * 100;
+
+    return {
+      model: `${gripper.model} (${values.cups} ventosas)`,
+      type: TIPOS_GARRA.VACUO_ZXP7,
+      requiredForce,
+      availableForce,
+      excessForce: availableForce - requiredForce,
+      safe: availableForce >= requiredForce,
+      marginPercent,
+      effectiveGripperCount: values.cups,
+      baseAvailableForce: availableForce,
+      configuredForce: null,
+      referencePressure: null,
+      forceReductionFactor: null,
+    };
+  }
+
   if (gripper.type === TIPOS_GARRA.VACUO_ELETRICO) {
+    if (gripper.model !== "ZXPE5") return null;
     const area = Math.PI * Math.pow((values.cupDiameter / 1000) / 2, 2);
     const vacuum = 74000;
     const availableForce = area * vacuum * values.cups;
@@ -513,6 +592,29 @@ function calculateForGripper(gripper, values) {
     return {
       model: `${gripper.model} (${values.cups} ventosas)`,
       type: TIPOS_GARRA.VACUO_ELETRICO,
+      requiredForce,
+      availableForce,
+      excessForce: availableForce - requiredForce,
+      safe: availableForce >= requiredForce,
+      marginPercent,
+      effectiveGripperCount: values.cups,
+      baseAvailableForce: availableForce,
+      configuredForce: null,
+      referencePressure: null,
+      forceReductionFactor: null,
+    };
+  }
+
+  if (gripper.type === TIPOS_GARRA.VACUO_MODULAR) {
+    const area = Math.PI * Math.pow((values.cupDiameter / 1000) / 2, 2);
+    const vacuum = getVacuumFromPressure(values.pressure);
+    const availableForce = area * vacuum * values.cups;
+    const requiredForce = values.mass * 9.81 * values.safetyFactor;
+    const marginPercent = ((availableForce - requiredForce) / requiredForce) * 100;
+
+    return {
+      model: `${gripper.model} (${values.cups} ventosas)`,
+      type: "vacuo_modular",
       requiredForce,
       availableForce,
       excessForce: availableForce - requiredForce,
@@ -622,7 +724,7 @@ function buildPressureCurve(result, referencePressure) {
   const pressureSteps = [];
   const forceSteps = [];
 
-  if (result.type === TIPOS_GARRA.VACUO || result.type === TIPOS_GARRA.VACUO_ELETRICO) {
+  if (result.type === TIPOS_GARRA.VACUO || result.type === TIPOS_GARRA.VACUO_ELETRICO || result.type === TIPOS_GARRA.VACUO_MODULAR) {
     for (let pressure = 0.3; pressure <= 0.700001; pressure += 0.05) {
       const roundedPressure = Number(pressure.toFixed(2));
       pressureSteps.push(roundedPressure);
@@ -700,7 +802,7 @@ function renderCards(allTypeGrippers, compatibleGrippers, bestModel) {
       if (isMagneticGripper(gripper)) detailLabel = "Magnética";
       if (isElectricGripper(gripper)) detailLabel = gripper.mounting === "standard" ? "Montagem Standard" : "Montagem Longitudinal";
       if (isVacuumGripper(gripper)) detailLabel = `${gripper.size} • ejetores: ${gripper.ejectors.join(", ")}`;
-      if (isElectricVacuumGripper(gripper)) detailLabel = `${gripper.maxWorkLoad} kg máx • ${gripper.maxVacuum} kPa • ${gripper.flowRate} L/min`;
+      if (isElectricVacuumGripper(gripper) || isVacuumZXP7Gripper(gripper)) detailLabel = `${gripper.maxWorkLoad} kg máx • ${gripper.maxVacuum} kPa • ${gripper.flowRate} L/min`;
 
       return `
         <button type="button" class="${classes.join(" ")}" data-model="${gripper.model}" ${isCompatible ? "" : 'disabled aria-disabled="true"'}>
@@ -710,7 +812,7 @@ function renderCards(allTypeGrippers, compatibleGrippers, bestModel) {
           ${bestModel === gripper.model ? '<span class="badge">Melhor opção</span>' : ""}
           <div class="card-body">
             <p>${detailLabel}</p>
-            <p>${isVacuumGripper(gripper) ? "Sistema a vácuo ZGS" : isElectricVacuumGripper(gripper) ? "Sistema a vácuo elétrico ZXPE5" : isMagneticGripper(gripper) || isElectricGripper(gripper) ? "Garras em paralelo: Sim" : `Paralelo: ${gripper.allows_parallel ? "Sim" : "Não"}`}</p>
+            <p>${isVacuumGripper(gripper) ? "Sistema a vácuo ZGS" : isElectricVacuumGripper(gripper) ? "Sistema a vácuo ZXPE5" : isVacuumZXP7Gripper(gripper) ? "Sistema a vácuo ZXP7" : isVacuumModularGripper(gripper) ? "Sistema a vácuo modular ZXP7" : isMagneticGripper(gripper) || isElectricGripper(gripper) ? "Garras em paralelo: Sim" : `Paralelo: ${gripper.allows_parallel ? "Sim" : "Não"}`}</p>
           </div>
         </button>`;
     })
@@ -720,7 +822,7 @@ function renderCards(allTypeGrippers, compatibleGrippers, bestModel) {
 }
 
 function renderTable(results, bestModel) {
-  if (selectedType === TIPOS_GARRA.VACUO || selectedType === TIPOS_GARRA.VACUO_ELETRICO) {
+  if (selectedType === TIPOS_GARRA.VACUO || selectedType === TIPOS_GARRA.VACUO_ELETRICO || selectedType === TIPOS_GARRA.VACUO_ZXP7 || selectedType === TIPOS_GARRA.VACUO_MODULAR) {
     comparisonTableBodyEl.innerHTML = results
       .map(
         (result) => `<tr class="${result.model === bestModel ? "best-row" : ""}">
@@ -759,10 +861,10 @@ function renderTable(results, bestModel) {
 }
 
 function syncParallelControlsForSelection() {
-  if (isMagneticType() || isElectricType() || isVacuumType() || isElectricVacuumType()) {
+  if (isMagneticType() || isElectricType() || isVacuumType() || isElectricVacuumType() || isVacuumZXP7Type() || isVacuumModularType()) {
     parallelModeEl.value = "enabled";
     parallelModeEl.disabled = true;
-    gripperCountEl.disabled = isVacuumType() || isElectricVacuumType();
+    gripperCountEl.disabled = isVacuumType() || isElectricVacuumType() || isVacuumZXP7Type() || isVacuumModularType();
     return;
   }
 
@@ -797,7 +899,7 @@ function setNoSelectionState(message = "Selecione uma garra para iniciar.") {
   recommendationEl.textContent = message;
   recommendationEl.classList.remove("is-safe");
   smcWarningEl.classList.add("is-hidden");
-  const colspan = selectedType === TIPOS_GARRA.VACUO || selectedType === TIPOS_GARRA.VACUO_ELETRICO ? 5 : 7;
+  const colspan = selectedType === TIPOS_GARRA.VACUO || selectedType === TIPOS_GARRA.VACUO_ELETRICO || selectedType === TIPOS_GARRA.VACUO_ZXP7 || selectedType === TIPOS_GARRA.VACUO_MODULAR ? 5 : 7;
   comparisonTableBodyEl.innerHTML = `<tr><td colspan="${colspan}">${message}</td></tr>`;
 }
 
@@ -850,6 +952,62 @@ function updateChart(calculation, values) {
     const baseForce = calculation.availableForce;
     const datasets = [
       { label: "ZXPE5 (N)", data: [baseForce, baseForce, baseForce, baseForce, baseForce, baseForce, baseForce], borderColor: "#0072ce", backgroundColor: "rgba(0,114,206,0.25)", fill: true, tension: 0, pointRadius: 2 },
+    ];
+    const chartKey = JSON.stringify([labels, datasets]);
+    if (chartKey === lastChartKey) return;
+    chart.data.labels = labels;
+    chart.data.datasets = datasets;
+    chart.update("none");
+    lastChartKey = chartKey;
+    return;
+  }
+
+  if (selectedGripper?.type === "vacuo_zxp7") {
+    chartTitleEl.textContent = "Força disponível (ZXP7)";
+    chart.options.scales.x.title.text = "Pressão (MPa)";
+    chart.options.scales.y.title.text = "Força (N)";
+
+    const labels = [0.3, 0.4, 0.5, 0.55];
+    const area = Math.PI * Math.pow((values.cupDiameter / 1000) / 2, 2);
+    const forceByPressure = labels.map((pressure) => area * getVacuumFromPressure(pressure) * values.cups);
+    const currentPoint = labels.map((pressure) => (
+      Math.abs(pressure - values.pressure) < 0.026
+        ? calculation.availableForce
+        : null
+    ));
+    const datasets = [{
+      label: "ZXP7 (N)",
+      data: forceByPressure,
+      borderColor: "#0072ce",
+      backgroundColor: "rgba(0,114,206,0.2)",
+      fill: true,
+    },
+    { label: "Ponto atual", data: currentPoint, borderColor: "#f59e0b", backgroundColor: "#f59e0b", showLine: false, pointRadius: 6 }];
+    const chartKey = JSON.stringify([labels, datasets]);
+    if (chartKey === lastChartKey) return;
+
+    chart.data.labels = labels;
+    chart.data.datasets = datasets;
+    chart.update("none");
+    lastChartKey = chartKey;
+    return;
+  }
+
+  if (selectedGripper?.type === "vacuo_modular") {
+    chartTitleEl.textContent = "Força disponível (ZXP7)";
+    chart.options.scales.x.title.text = "Pressão (MPa)";
+    chart.options.scales.y.title.text = "Força (N)";
+
+    const baseForce = calculation.availableForce;
+    const labels = [0.3, 0.4, 0.5, 0.6];
+    const datasets = [
+      {
+        label: "ZXP7 (N)",
+        data: [baseForce, baseForce, baseForce, baseForce],
+        borderColor: "#0072ce",
+        backgroundColor: "rgba(0,114,206,0.2)",
+        fill: true,
+      },
     ];
     const chartKey = JSON.stringify([labels, datasets]);
     if (chartKey === lastChartKey) return;
@@ -919,6 +1077,8 @@ function applyTypeDefaults(type) {
   document.getElementById("thickness").value = defaults.thickness ?? document.getElementById("thickness").value;
   document.getElementById("material").value = defaults.material ?? document.getElementById("material").value;
   document.getElementById("pressure").value = defaults.pressure ?? document.getElementById("pressure").value;
+  document.getElementById("vacuumPressure").value = defaults.pressure ?? document.getElementById("vacuumPressure").value;
+  document.getElementById("vacuumPressureFixed").value = "-74";
   mountingTypeEl.value = defaults.mountingType ?? mountingTypeEl.value;
   configuredForceEl.value = defaults.configuredForce ?? configuredForceEl.value;
   suctionAreaEl.value = defaults.suctionArea ?? suctionAreaEl.value;
@@ -962,7 +1122,9 @@ function updateUI(options = {}) {
   const isElectric = isElectricType(values.type);
   const isVacuum = isVacuumType(values.type);
   const isVacuumElectric = isVacuumElectricType(values.type);
-  const isVacuumLike = isVacuum || isVacuumElectric;
+  const isVacuumZXP7 = isVacuumZXP7Type(values.type);
+  const isVacuumModular = isVacuumModularType(values.type);
+  const isVacuumLike = isVacuum || isVacuumElectric || isVacuumZXP7 || isVacuumModular;
   const hasInvalidValues = values.mass < 0
     || values.thickness <= 0
     || values.gripperCount <= 0
@@ -972,7 +1134,8 @@ function updateUI(options = {}) {
     || (isElectric && (values.configuredForce < 60 || values.configuredForce > 140))
     || (isVacuum && (values.pressure < 0.3 || values.pressure > 0.7 || values.suctionArea < 0.1 || values.suctionArea > 1 || values.ejectors < 1))
     || (isVacuumElectric && values.mass <= 0)
-    || (isVacuumElectric && (!Number.isFinite(values.cups) || values.cups < 1 || values.cupDiameter <= 0));
+    || (isVacuumZXP7 && values.mass <= 0)
+    || ((isVacuumElectric || isVacuumZXP7 || isVacuumModular) && (!Number.isFinite(values.cups) || values.cups < 1 || values.cupDiameter <= 0));
   if (hasInvalidValues) return;
 
   const allTypeGrippers = getTypeGrippers(values.type);
@@ -990,7 +1153,7 @@ function updateUI(options = {}) {
   if (isVacuum && selectedGripper && !selectedGripper.ejectors.includes(values.ejectors)) {
     selectedGripper = null;
   }
-  if (isVacuumElectric && selectedGripper && !selectedGripper.cups.includes(values.cups)) {
+  if ((isVacuumElectric || isVacuumZXP7 || isVacuumModular) && selectedGripper && !selectedGripper.cups.includes(values.cups)) {
     selectedGripper = null;
   }
   geometryCompatibilityMessageEl.textContent = compatibilityMessage;
@@ -1013,13 +1176,17 @@ function updateUI(options = {}) {
   const electricBest = isElectric ? getElectricBestRecommendation(electricRecommendationPool, values) : null;
 
   if (
-    (!selectedGripper || selectedGripper.type === TIPOS_GARRA.VACUO_ELETRICO)
+    (!selectedGripper || selectedGripper.type === TIPOS_GARRA.VACUO_ELETRICO || selectedGripper.type === TIPOS_GARRA.VACUO_ZXP7 || selectedGripper.type === TIPOS_GARRA.VACUO_MODULAR)
     && compatibleGrippers.length
     && !skipAutoSelection
   ) {
     selectedGripper = isVacuum
       ? compatibleGrippers.find((gripper) => gripper.ejectors.includes(values.ejectors)) || compatibleGrippers.find((gripper) => gripper.model === (best?.model || compatibleGrippers[0].model)) || null
       : isVacuumElectric
+        ? compatibleGrippers.find((gripper) => gripper.cups.includes(values.cups)) || compatibleGrippers[0] || null
+      : isVacuumZXP7
+        ? compatibleGrippers.find((gripper) => gripper.cups.includes(values.cups)) || compatibleGrippers[0] || null
+      : isVacuumModular
         ? compatibleGrippers.find((gripper) => gripper.cups.includes(values.cups)) || compatibleGrippers[0] || null
       : compatibleGrippers.find((gripper) => gripper.model === (best?.model || compatibleGrippers[0].model)) || null;
   }
@@ -1065,6 +1232,10 @@ function updateUI(options = {}) {
       ? `${calculation.model} (${values.ejectors} ejetor${values.ejectors > 1 ? "es" : ""})`
       : isVacuumElectric
         ? calculation.model
+        : isVacuumZXP7
+          ? calculation.model
+        : isVacuumModular
+          ? calculation.model
         : isMagnetic
           ? calculation.model
           : `${calculation.model} (${calculation.effectiveGripperCount} garra${calculation.effectiveGripperCount > 1 ? "s" : ""})`;
@@ -1092,6 +1263,18 @@ function updateUI(options = {}) {
         ? `Melhor opção ZXPE5: ${best.model} (dimensionamento otimizado).`
         : `Nenhuma opção ZXPE5 atende totalmente — sugerindo a mais próxima: ${best.model}.`
       : "Nenhuma configuração ZXPE5 aprovada para os parâmetros atuais.";
+  } else if (isVacuumZXP7) {
+    recommendationEl.textContent = best
+      ? best.safe
+        ? `Melhor opção ZXP7: ${best.model} (dimensionamento otimizado).`
+        : `Nenhuma opção ZXP7 atende totalmente — sugerindo a mais próxima: ${best.model}.`
+      : "Nenhuma configuração ZXP7 aprovada para os parâmetros atuais.";
+  } else if (isVacuumModular) {
+    recommendationEl.textContent = best
+      ? best.safe
+        ? `Melhor opção ZXP7: ${best.model} (dimensionamento otimizado).`
+        : `Nenhuma opção ZXP7 atende totalmente — sugerindo a mais próxima: ${best.model}.`
+      : "Nenhuma configuração ZXP7 aprovada para os parâmetros atuais.";
   } else {
     recommendationEl.textContent = best
       ? `Melhor opção em ${isMagnetic ? "garras magnéticas" : "garras pneumáticas"}: ${best.model} com excesso mínimo de ${best.excessForce.toFixed(2)} N.`
@@ -1109,11 +1292,27 @@ function updateUI(options = {}) {
   } else if (isVacuum && calculation.marginPercent < 0) {
     smcWarningEl.textContent = "Garra NÃO recomendada.";
     smcWarningEl.classList.remove("is-hidden");
+  } else if (isVacuumZXP7 && (values.pressure < 0.3 || values.pressure > 0.55)) {
+    smcWarningEl.textContent = "Fora da faixa recomendada da ZXP7";
+    smcWarningEl.classList.remove("is-hidden");
   } else if (isElectric && calculation.availableForce < pieceWeight * 5) {
     smcWarningEl.textContent = "SMC recomenda entre 5x e 10x o peso da peça";
     smcWarningEl.classList.remove("is-hidden");
   } else if (isVacuumElectric && values.mass > 5) {
-    smcWarningEl.textContent = "ZXPE5 excede carga máxima recomendada (5 kg)";
+    if (selectedGripper?.model === "ZXP7" && values.mass > 7) {
+      smcWarningEl.textContent = "ZXP7 excede carga máxima recomendada (7 kg)";
+      smcWarningEl.classList.remove("is-hidden");
+    } else if (selectedGripper?.model !== "ZXP7" && values.mass > 5) {
+      smcWarningEl.textContent = "ZXPE5 excede carga máxima recomendada (5 kg)";
+      smcWarningEl.classList.remove("is-hidden");
+    } else {
+      smcWarningEl.classList.add("is-hidden");
+    }
+  } else if (isVacuumModular && values.mass > 7) {
+    smcWarningEl.textContent = "ZXP7 excede carga máxima recomendada (7 kg)";
+    smcWarningEl.classList.remove("is-hidden");
+  } else if (isVacuumZXP7 && values.mass > 7) {
+    smcWarningEl.textContent = "ZXP7 excede carga máxima recomendada (7 kg)";
     smcWarningEl.classList.remove("is-hidden");
   } else {
     smcWarningEl.classList.add("is-hidden");
@@ -1168,30 +1367,13 @@ function handleCardSelection(event) {
   if (isVacuumType() && selectedGripper && !selectedGripper.ejectors.includes(Number(ejectorsEl.value))) {
     ejectorsEl.value = String(selectedGripper.ejectors[0]);
   }
-  if (isElectricVacuumType() && selectedGripper && !selectedGripper.cups.includes(Number(cupsEl.value))) {
+  if ((isElectricVacuumType() || isVacuumZXP7Type() || isVacuumModularType()) && selectedGripper && !selectedGripper.cups.includes(Number(cupsEl.value))) {
     cupsEl.value = String(selectedGripper.cups[0]);
   }
   if (selectedGripper?.type === "vacuo") {
     document.getElementById("pressure").value = getDefaultPressure(selectedGripper.size);
   }
   updateUI();
-}
-
-function handleTypeSelection(event) {
-  const nextType = event.target.value;
-  if (!nextType || nextType === selectedType) return;
-
-  applyTypeDefaults(nextType);
-  syncShapeOptions();
-  syncGeometryFields();
-  updateUI();
-}
-
-function handleTechnologyCardSelection(event) {
-  const trigger = event.target.closest("[data-type]");
-  if (!trigger) return;
-  tipoGarraSelectEl.value = trigger.dataset.type;
-  handleTypeSelection({ target: { value: trigger.dataset.type } });
 }
 
 function init() {
@@ -1201,8 +1383,22 @@ function init() {
   syncShapeOptions();
   syncGeometryFields();
   syncGripperSpecificFields();
-  tipoGarraSelectEl.addEventListener("change", handleTypeSelection);
-  technologySelectorEl.addEventListener("click", handleTechnologyCardSelection);
+  technologySelectorEl.querySelectorAll(".technology-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const type = card.dataset.type;
+      selectedType = type;
+      applyTypeDefaults(type);
+      renderTechnologyCards();
+      updateUI();
+    });
+  });
+  tipoGarraSelectEl.addEventListener("change", (event) => {
+    const type = event.target.value;
+    selectedType = type;
+    applyTypeDefaults(type);
+    renderTechnologyCards();
+    updateUI();
+  });
   gripperCardsEl.addEventListener("click", handleCardSelection);
   form.addEventListener("input", updateUI);
   form.addEventListener("change", handleFormChange);

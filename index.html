@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SMC Gripper Sizing Tool</title>
+    <title>Configurador de Garras para Cobots</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,12 +16,11 @@
   <body>
     <header class="smc-header">
       <div class="smc-header-content">
-        <img
-          class="smc-logo"
-          src="https://i.ibb.co/84rCcwhk/SMC.png"
-          alt="SMC Logo"
-        />
-
+        <img 
+  class="smc-logo" 
+  src="https://i.ibb.co/84rCcwhk/SMC.png" 
+  alt="SMC"
+/>
         <div class="smc-text">
           <h1>Configurador de Garras para Cobots</h1>
           <p>
@@ -49,6 +48,7 @@
             <button type="button" class="technology-card" data-type="magnetica">Magnética</button>
             <button type="button" class="technology-card" data-type="vacuo">Vácuo (ZGS)</button>
             <button type="button" class="technology-card" data-type="vacuo_eletrico">Vácuo Elétrico (ZXPE5)</button>
+            <button type="button" class="technology-card" data-type="vacuo_zxp7">Vácuo (ZXP7)</button>
           </div>
           <label>
             Selecione a tecnologia
@@ -58,6 +58,7 @@
               <option value="magnetica">Magnética</option>
               <option value="vacuo">Vácuo (ZGS)</option>
               <option value="vacuo_eletrico">Vácuo Elétrico (ZXPE5)</option>
+              <option value="vacuo_zxp7">Vácuo (ZXP7)</option>
             </select>
           </label>
         </div>
@@ -158,8 +159,12 @@
               • 0,6 MPa para modelo 400x240 (conforme catálogo SMC)
             </p>
             <label id="vacuumPressureField" class="is-hidden">
+              Pressão de alimentação (MPa)
+              <input id="vacuumPressure" type="number" min="0.3" max="0.55" step="0.01" value="0.5" />
+            </label>
+            <label id="vacuumPressureFixedField" class="is-hidden">
               Máxima pressão de vácuo (kPa)
-              <input id="vacuumPressure" type="text" value="-74" readonly />
+              <input id="vacuumPressureFixed" type="number" value="-74" readonly disabled />
             </label>
             <p id="vacuumNote" class="vacuum-note is-hidden">
               Valores baseados em condições padrão de medição da SMC, com a bomba operando continuamente. Podem variar conforme pressão atmosférica, altitude e método de medição.
